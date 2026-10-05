@@ -131,7 +131,7 @@ footer{color:var(--muted);font-size:12px;margin-top:22px;text-align:center}
 
 <script>
 'use strict';
-const VERSION='v2026-10-02.1';
+const VERSION='v2026-10-05.2';
 const COMPANY='14230172';
 const KEY='langdon.monitor.v1';
 
@@ -143,12 +143,12 @@ const SEED={
       src:'Comparative column in Dec 2025 accounts',
       v:{ppe:37420,tradeDebtors:114295,prepayments:50272,otherDebtors:33775,debtors:198342,cash:844146,currentAssets:1042488,
          vat:89013,tradeCreditors:23808,taxSocSec:43152,otherCreditorsWithin:465129,accruals:50500,creditorsWithin:671602,
-         netCurrent:370886,totalLessCL:408306,creditorsAfter:157500,netAssets:250806,shareCapital:134,retained:250672,employees:14}},
+         netCurrent:370886,totalLessCL:408306,creditorsAfter:157500,otherCreditorsAfter:157500,netAssets:250806,shareCapital:134,retained:250672,employees:14}},
     '2025-12-31':{end:'2025-12-31',start:'2025-01-01',audit:'Unaudited, audit-exempt (filleted)',srcEnd:'2025-12-31',
       src:'Accounts filed 30 Sep 2026',
       v:{ppe:31085,tradeDebtors:116215,prepayments:76731,otherDebtors:13,debtors:192959,cash:1079828,currentAssets:1272787,
          vat:55804,tradeCreditors:177362,taxSocSec:28294,otherCreditorsWithin:409976,accruals:40000,creditorsWithin:711436,
-         netCurrent:561351,totalLessCL:592436,creditorsAfter:157500,netAssets:434936,shareCapital:134,retained:434802,employees:17}}
+         netCurrent:561351,totalLessCL:592436,creditorsAfter:157500,otherCreditorsAfter:157500,netAssets:434936,shareCapital:134,retained:434802,employees:17}}
   },
   officers:[
     {id:'P9NfACEaTiVaZljUjnYM9FuWn5A',name:'HEWLETT, Christopher James',role:'Director',appointed:'2022-07-12'},
@@ -201,9 +201,18 @@ const SEED={
 /* ---------- State ---------- */
 let S=load();
 function load(){
-  try{const r=localStorage.getItem(KEY);if(r){const s=JSON.parse(r);if(s&&s.periods)return s}}catch(e){}
+  try{const r=localStorage.getItem(KEY);if(r){const s=JSON.parse(r);if(s&&s.periods){
+    if(s.schema!==2){ // v2: parser now reads older accounts' creditor tags; drop periods saved before that if they do not reconcile
+      const bad=Object.keys(s.periods).filter(k=>integrity(s.periods[k].v).some(c=>!c.ok));
+      bad.forEach(k=>delete s.periods[k]);
+      for(const[k,sp]of Object.entries(SEED.periods))if(s.periods[k]&&s.periods[k].v.otherCreditorsAfter==null&&sp.v.otherCreditorsAfter!=null)s.periods[k].v.otherCreditorsAfter=sp.v.otherCreditorsAfter;
+      s.events=s.events||[];
+      if(bad.length)s.events.unshift({at:new Date().toISOString(),sev:'info',text:`Removed ${bad.join(', ')}: figures saved earlier did not reconcile (parser fixed). Run a live check or re-import those accounts.`});
+      s.docsChecked={};s.schema=2;
+    }
+    return s}}}catch(e){}
   return {periods:structuredClone(SEED.periods),officers:structuredClone(SEED.officers),filings:SEED.filings.map(f=>({date:f[0],type:f[1],cat:f[2],desc:f[3],att:!!f[4]})),
-    links:{},events:[],settings:{worker:''},lastCheck:null,baselined:false,coverage:SEED.coverage};
+    links:{},events:[],settings:{worker:''},lastCheck:null,baselined:false,coverage:SEED.coverage,schema:2,docsChecked:{}};
 }
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 
@@ -242,35 +251,39 @@ function toast(msg){const t=h('div',{class:'toast',text:msg});document.body.appe
 const NS={ix:'http://www.xbrl.org/2013/inlineXBRL',xb:'http://www.xbrl.org/2003/instance',di:'http://xbrl.org/2006/xbrldi'};
 const loc=s=>(s||'').split(':').pop();
 function mapFact(name,dims){
-  const dk=Object.keys(dims);const none=dk.length===0;
-  const mat=dims.MaturitiesOrExpirationPeriodsDimension;
-  const onlyMat=dk.length===1&&dk[0]==='MaturitiesOrExpirationPeriodsDimension';
-  const within=none||(onlyMat&&mat==='WithinOneYear');
+  const FI='FinancialInstrumentCurrentNon-currentDimension',MAT='MaturitiesOrExpirationPeriodsDimension';
+  if(name==='Equity'){const e=dims.EquityClassesDimension;
+    return e==='ShareCapital'?'shareCapital':e==='RetainedEarningsAccumulatedLosses'?'retained':null}
+  if(Object.keys(dims).some(k=>k!==FI&&k!==MAT))return null;
+  const mat=dims[MAT],fi=dims[FI];
+  // bucket: older accounts tag Within/After via the maturity dimension, the financial-instrument dimension, or both
+  const b=mat==='WithinOneYear'?'w':mat==='AfterOneYear'?'a':fi==='CurrentFinancialInstruments'?'w':fi==='Non-currentFinancialInstruments'?'a':null;
+  const plain=b===null,within=b===null||b==='w';
   switch(name){
-    case 'FixedAssets':return none?'fixedAssets':null;
-    case 'PropertyPlantEquipment':return none?'ppe':null;
+    case 'FixedAssets':return plain?'fixedAssets':null;
+    case 'PropertyPlantEquipment':return plain?'ppe':null;
     case 'Debtors':return within?'debtors':null;
     case 'TradeDebtorsTradeReceivables':return within?'tradeDebtors':null;
     case 'PrepaymentsAccruedIncome':return within?'prepayments':null;
     case 'OtherDebtors':return within?'otherDebtors':null;
-    case 'CashBankOnHand':return none?'cash':null;
-    case 'CurrentAssets':return none?'currentAssets':null;
-    case 'Creditors':return onlyMat&&mat==='WithinOneYear'?'creditorsWithin':onlyMat&&mat==='AfterOneYear'?'creditorsAfter':null;
+    case 'CashBankOnHand':return plain?'cash':null;
+    case 'CurrentAssets':return plain?'currentAssets':null;
+    case 'Creditors':return b==='w'?'creditorsWithin':b==='a'?'creditorsAfter':null;
     case 'Value-addedTaxPayable':return within?'vat':null;
     case 'TradeCreditorsTradePayables':return within?'tradeCreditors':null;
-    case 'TaxationSocialSecurityPayable':return within?'taxSocSec':null;
-    case 'OtherCreditors':return onlyMat&&mat==='WithinOneYear'?'otherCreditorsWithin':null;
+    case 'TaxationSocialSecurityPayable':case 'OtherTaxationSocialSecurityPayable':return within?'taxSocSec':null;
+    case 'CorporationTaxPayable':return within?'corpTax':null;
+    case 'OtherCreditors':return b==='w'?'otherCreditorsWithin':b==='a'?'otherCreditorsAfter':null;
+    case 'BankBorrowingsOverdrafts':return b==='a'?'bankAfter':null;
     case 'AccruedLiabilities':case 'AccruedLiabilitiesDeferredIncome':return within?'accruals':null;
-    case 'NetCurrentAssetsLiabilities':return none?'netCurrent':null;
-    case 'TotalAssetsLessCurrentLiabilities':return none?'totalLessCL':null;
-    case 'NetAssetsLiabilities':return none?'netAssets':null;
-    case 'Equity':{const e=dims.EquityClassesDimension;
-      if(e==='ShareCapital')return 'shareCapital';if(e==='RetainedEarningsAccumulatedLosses')return 'retained';return null}
-    case 'AverageNumberEmployeesDuringPeriod':return none?'employees':null;
-    case 'TurnoverRevenue':return none?'turnover':null;
-    case 'GrossProfitLoss':return none?'grossProfit':null;
-    case 'OperatingProfitLoss':return none?'operatingProfit':null;
-    case 'ProfitLoss':return none?'profit':null;
+    case 'NetCurrentAssetsLiabilities':return plain?'netCurrent':null;
+    case 'TotalAssetsLessCurrentLiabilities':return plain?'totalLessCL':null;
+    case 'NetAssetsLiabilities':return plain?'netAssets':null;
+    case 'AverageNumberEmployeesDuringPeriod':return plain?'employees':null;
+    case 'TurnoverRevenue':return plain?'turnover':null;
+    case 'GrossProfitLoss':return plain?'grossProfit':null;
+    case 'OperatingProfitLoss':return plain?'operatingProfit':null;
+    case 'ProfitLoss':return plain?'profit':null;
   }
   return null;
 }
@@ -318,6 +331,7 @@ function integrity(v){
   if(has('currentAssets','creditorsWithin','netCurrent'))chk('Current assets − creditors <1yr = net current assets',v.currentAssets-v.creditorsWithin,v.netCurrent);
   if(has('netCurrent','totalLessCL'))chk('Net current assets + fixed assets = total assets less CL',v.netCurrent+(v.ppe||0)+(v.fixedAssets||0),v.totalLessCL);
   if(has('totalLessCL','netAssets'))chk('Total assets less CL − creditors >1yr = net assets',v.totalLessCL-(v.creditorsAfter||0),v.netAssets);
+  if(has('creditorsAfter','otherCreditorsAfter'))chk('Long-term creditor lines add up to creditors >1yr',v.otherCreditorsAfter+(v.bankAfter||0),v.creditorsAfter);
   if(has('shareCapital','retained','netAssets'))chk('Share capital + reserves = net assets',v.shareCapital+v.retained,v.netAssets);
   return out;
 }
@@ -365,12 +379,12 @@ function derived(p){const v=p.v;return{
   cashCover:ratio(v.cash,v.creditorsWithin),
   otherCreditorsTotal:(v.otherCreditorsWithin!=null&&v.creditorsAfter!=null)?v.otherCreditorsWithin+v.creditorsAfter:null}}
 function reserveChange(i,ps){return i>0&&ps[i].v.retained!=null&&ps[i-1].v.retained!=null?ps[i].v.retained-ps[i-1].v.retained:null}
-const LABELS={fixedAssets:'Fixed assets',ppe:'Tangible fixed assets',tradeDebtors:'Trade debtors',prepayments:'Prepayments & accrued income',otherDebtors:'Other debtors',debtors:'Total debtors',cash:'Cash at bank and in hand',currentAssets:'Current assets',vat:'VAT payable',tradeCreditors:'Trade creditors',taxSocSec:'Tax & social security',otherCreditorsWithin:'Other creditors',accruals:'Accruals',creditorsWithin:'Creditors due within 1 year',netCurrent:'Net current assets',totalLessCL:'Total assets less current liabilities',creditorsAfter:'Creditors due after 1 year',netAssets:'Net assets',shareCapital:'Share capital',retained:'Retained earnings',employees:'Average employees',turnover:'Turnover',grossProfit:'Gross profit',operatingProfit:'Operating profit',profit:'Profit for the year'};
+const LABELS={fixedAssets:'Fixed assets',ppe:'Tangible fixed assets',tradeDebtors:'Trade debtors',prepayments:'Prepayments & accrued income',otherDebtors:'Other debtors',debtors:'Total debtors',cash:'Cash at bank and in hand',currentAssets:'Current assets',vat:'VAT payable',corpTax:'Corporation tax',tradeCreditors:'Trade creditors',taxSocSec:'Tax & social security',otherCreditorsWithin:'Other creditors (within 1 year)',accruals:'Accruals',creditorsWithin:'Creditors due within 1 year',netCurrent:'Net current assets',totalLessCL:'Total assets less current liabilities',creditorsAfter:'Creditors due after 1 year',otherCreditorsAfter:'Other creditors due after 1 year',bankAfter:'Bank borrowings due after 1 year (as tagged)',netAssets:'Net assets',shareCapital:'Share capital',retained:'Retained earnings',employees:'Average employees',turnover:'Turnover',grossProfit:'Gross profit',operatingProfit:'Operating profit',profit:'Profit for the year'};
 function movementFlags(){
   const ps=sortedPeriods();if(ps.length<2)return[];
   const a=ps[ps.length-1],b=ps[ps.length-2],out=[];
   const span=`${pLabel(b)} → ${pLabel(a)}`;
-  for(const k of ['cash','debtors','tradeDebtors','prepayments','otherDebtors','vat','tradeCreditors','taxSocSec','otherCreditorsWithin','accruals','creditorsWithin','ppe']){
+  for(const k of ['cash','debtors','tradeDebtors','prepayments','otherDebtors','vat','tradeCreditors','taxSocSec','otherCreditorsWithin','accruals','creditorsWithin','ppe','corpTax']){
     const x=a.v[k],y=b.v[k];if(x==null||y==null)continue;const d=x-y,p=pct(x,y);
     const asset=['cash','debtors','tradeDebtors','prepayments','otherDebtors','ppe'].includes(k);
     const favourable=asset?d>0:d<0;
@@ -507,7 +521,7 @@ function renderAccounts(){
   sect('Profit and loss');['turnover','grossProfit','operatingProfit','profit'].forEach(k=>line(k));
   if(!ps.some(p=>p.v.turnover!=null))rows.push(h('tr',{},h('td',{colspan:ps.length+3,class:'note',style:'text-align:left',text:'Not disclosed: these are filleted accounts (balance sheet only).'})));
   sect('Assets');['fixedAssets','ppe','tradeDebtors','prepayments','otherDebtors','debtors','cash'].forEach(k=>line(k));line('currentAssets','tot');
-  sect('Liabilities');['vat','tradeCreditors','taxSocSec','otherCreditorsWithin','accruals'].forEach(k=>line(k));line('creditorsWithin','tot');line('netCurrent','tot');line('totalLessCL','tot');line('creditorsAfter');line('netAssets','tot');
+  sect('Liabilities');['vat','corpTax','tradeCreditors','taxSocSec','otherCreditorsWithin','accruals'].forEach(k=>line(k));line('creditorsWithin','tot');line('netCurrent','tot');line('totalLessCL','tot');line('creditorsAfter');line('otherCreditorsAfter');line('bankAfter');line('netAssets','tot');
   sect('Equity and people');['shareCapital','retained','employees'].forEach(k=>line(k));
   sect('Ratios');
   const r=(l,f)=>rows.push(h('tr',{},h('td',{text:l}),...ps.map(p=>h('td',{class:'n',text:f(p)})),ps.length>1?h('td'):null,ps.length>1?h('td'):null));
@@ -580,7 +594,8 @@ function renderSetup(){
       h('button',{class:'btn sec',text:'Reset to seed data',onclick:()=>{if(confirm('Discard imported data and checks?')){localStorage.removeItem(KEY);S=load();renderAll()}}}))));
   if(S.events.length)el.append(h('div',{class:'card'},h('h2',{text:'Activity log'}),...S.events.slice(0,15).map(e=>h('div',{class:'row'},h('span',{text:e.text}),h('span',{class:'note',text:new Date(e.at).toLocaleDateString('en-GB')})))));
   el.append(h('div',{class:'card'},h('h2',{text:'Where the numbers came from'}),
-    h('div',{class:'note',text:'Dec 2025 and Dec 2024: parsed from the iXBRL accounts filed 30 Sep 2026 (the Dec 2024 column is the comparative in that filing). Officers and filings: Companies House public pages. Mar 2023 and Dec 2023: not yet loaded. Nothing here is taken from memory or estimated.'})));
+    ...sortedPeriods().map(p=>h('div',{class:'row'},h('span',{text:pLabel(p)}),h('span',{class:'note',text:p.src}))),
+    h('div',{class:'note',style:'margin-top:8px',text:'Officers and filings come from Companies House (public pages, or the live API once the Worker is connected). Nothing here is estimated.'})));
 }
 
 function renderAll(){
@@ -627,18 +642,22 @@ async function runCheck(manual){
       }catch(e){console.warn('appointments',o.id,e.message)}
     }
     // filings
-    const live=(fil.items||[]).map(f=>({date:f.date,type:f.type,cat:mapCat(f.category,f.type),desc:cleanDesc(f),att:/GAZ|DISS|SOAS|STRIKE/.test(f.type||'')||/replacement/i.test(f.description||''),tid:f.transaction_id,meta:f.links&&f.links.document_metadata}));
+    const live=(fil.items||[]).map(f=>{const dv=f.description_values||{},desc=cleanDesc(f);
+      return{date:f.date,type:f.type,cat:mapCat(f.category,f.type),desc,att:/GAZ|DISS|SOAS|STRIKE/.test(f.type||'')||/replacement/i.test(desc),tid:f.transaction_id,
+        meta:f.links&&f.links.document_metadata,end:f.category==='accounts'?(dv.made_up_date||parseLongDate(dv.description||desc)):null}});
     const seen=new Set(S.filings.map(f=>f.tid).filter(Boolean));
-    if(S.filings.some(f=>!f.tid)){/* seeded list: baseline replaced wholesale on first run */}
     if(!base)for(const f of live)if(!seen.has(f.tid))push(f.att?'serious':'info',`New filing (${f.type}): ${f.desc}, ${fmtD(f.date)}`);
     S.filings=live;S.coverage=null;
-    // accounts: ingest any we do not hold
-    for(const f of live.filter(x=>x.cat==='accounts'&&x.meta&&/made up to/i.test(x.desc))){
-      const end=parseLongDate(f.desc);if(!end||(S.periods[end]&&S.periods[end].src&&!/Comparative/.test(S.periods[end].src)))continue;
-      try{const r=await fetch(`${w}/document?meta=${encodeURIComponent(f.meta)}`);if(!r.ok)throw new Error(r.status);
+    // accounts: download each filed iXBRL once; load it, or check it against the figures already held
+    S.docsChecked=S.docsChecked||{};
+    for(const f of live.filter(x=>x.cat==='accounts'&&x.meta&&x.end&&!S.docsChecked[x.tid])){
+      try{
+        const r=await fetch(`${w}/document?meta=${encodeURIComponent(f.meta)}`);if(!r.ok)throw new Error('HTTP '+r.status);
         const m=mergeImport(parseIxbrl(await r.text()),'Companies House filing '+fmtD(f.date));
-        if(!base||m.added.length)ev.push({at:now,sev:'info',text:`Accounts loaded for year to ${fmtD(end)}`+(m.notes.length?' — '+m.notes.join('; '):'')})}
-      catch(e){console.warn('doc',e.message);ev.push({at:now,sev:'info',text:`Could not load iXBRL for ${fmtD(end)}: ${e.message}`})}
+        S.docsChecked[f.tid]=true;
+        const out=(m.added.length||m.updated.length)?'loaded':m.notes.length?'differs: '+m.notes.join('; '):'matches the figures already held';
+        ev.push({at:now,sev:m.notes.length?'warning':'info',text:`Accounts for year to ${fmtD(f.end)} (filed ${fmtD(f.date)}): ${out}`});
+      }catch(e){console.warn('doc',e.message);ev.push({at:now,sev:'info',text:`Could not download accounts for year to ${fmtD(f.end)}: ${e.message}`})}
     }
     S.baselined=true;S.lastCheck=now;S.events=[...ev,...S.events].slice(0,100);save();renderAll();
     if(manual)toast(base?'Baseline captured':ev.length?`${ev.length} change(s) found`:'No changes');
@@ -646,8 +665,12 @@ async function runCheck(manual){
 }
 function mapCat(c,t){c=c||'';if(c==='accounts')return'accounts';if(c==='confirmation-statement')return'confirmation';if(c==='officers')return'officers';
   if(/psc|persons/.test(c)||/^PSC/.test(t||''))return'psc';if(c==='address')return'address';if(c==='gazette')return'gazette';if(c==='capital')return'capital';return'other'}
-function cleanDesc(f){const d=(f.description||'').replace(/-/g,' ');const dv=f.description_values||{};
-  return (f.description||'').replace(/\{(\w+)\}/g,(m,k)=>dv[k]||m).replace(/-/g,' ').replace(/^./,c=>c.toUpperCase())||d}
+function cleanDesc(f){const dv=f.description_values||{};
+  if(dv.description)return dv.description;
+  let d=(f.description||'').replace(/\{(\w+)\}/g,(m,k)=>dv[k]||m).replace(/-/g,' ');
+  d=d.charAt(0).toUpperCase()+d.slice(1);
+  if(dv.made_up_date&&!/made up to/i.test(d))d+=' made up to '+fmtDL(dv.made_up_date);
+  return d||f.type||''}
 
 /* ---------- Boot ---------- */
 document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>{

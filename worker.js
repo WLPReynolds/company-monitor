@@ -1,6 +1,6 @@
 // Cloudflare Worker: read-only proxy to the Companies House API for company 14230172.
 // Companies House sends no CORS headers, so the PWA cannot call it directly.
-// Setup: create a free API key at https://developer.company-information.service.gov.uk/ (REST key),
+// Setup: create a free application at https://developer.company-information.service.gov.uk/manage-applications (live), then add a key of type REST (not Streaming or Web); leave Restricted IPs and JavaScript domains blank.
 // then in the Worker settings add secret CH_API_KEY and variable ALLOW_ORIGIN (e.g. https://wlpreynolds.github.io).
 // UNTESTED against the live API (the build environment has no route to Companies House): test via the Setup tab.
 const COMPANY = '14230172';
