@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Langdon Monitor</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#0d366b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Langdon">
+<style>
+:root{
+  color-scheme:light;
+  --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10); --wash:rgba(11,11,11,.04);
+  --s1:#2a78d6; --s2:#eb6834; --pos:#006300; --neg:#d03b3b; --warn:#9a6700; --accent:#184f95;
+  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+}
+@media (prefers-color-scheme:dark){:root{
+  color-scheme:dark;
+  --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10); --wash:rgba(255,255,255,.05);
+  --s1:#3987e5; --s2:#d95926; --pos:#0ca30c; --neg:#e66767; --warn:#fab219; --accent:#6da7ec;
+}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--page);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;
+  padding:env(safe-area-inset-top) 0 calc(72px + env(safe-area-inset-bottom))}
+a{color:var(--accent)}
+.wrap{max-width:980px;margin:0 auto;padding:0 16px}
+header{padding:18px 0 6px}
+h1{font-size:20px;margin:0;font-weight:650;letter-spacing:-.01em}
+.sub{color:var(--ink2);font-size:13px;margin-top:2px;display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
+.chip{display:inline-flex;gap:5px;align-items:center;font-size:12px;border:1px solid var(--border);border-radius:99px;padding:1px 9px;background:var(--surface)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--good);display:inline-block}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);
+  display:flex;padding:6px 8px calc(6px + env(safe-area-inset-bottom));z-index:5}
+nav button{flex:1;background:none;border:0;color:var(--ink2);font:inherit;font-size:12px;padding:8px 2px;border-radius:8px;cursor:pointer}
+nav button[aria-selected=true]{color:var(--ink);font-weight:650;background:var(--wash)}
+@media(min-width:760px){
+  nav{position:static;border:0;background:none;padding:8px 0 0;gap:4px;justify-content:flex-start}
+  nav button{flex:none;font-size:14px;padding:7px 14px}
+  body{padding-bottom:40px}
+}
+section[hidden]{display:none}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:14px}
+.card h2{font-size:13px;font-weight:650;margin:0 0 10px;color:var(--ink2);text-transform:uppercase;letter-spacing:.04em}
+.grid{display:grid;gap:14px;grid-template-columns:1fr}
+@media(min-width:760px){.grid.two{grid-template-columns:1fr 1fr}.grid.four{grid-template-columns:repeat(4,1fr)}}
+.grid.four{grid-template-columns:1fr 1fr}
+@media(min-width:760px){.grid.four{grid-template-columns:repeat(4,1fr)}}
+.hero{font-size:52px;font-weight:650;letter-spacing:-.02em;line-height:1.05;margin:2px 0 4px}
+.lbl{font-size:13px;color:var(--ink2)}
+.val{font-size:24px;font-weight:650;letter-spacing:-.01em;line-height:1.15}
+.delta{font-size:13px;margin-top:2px;display:inline-flex;gap:4px;align-items:center}
+.up{color:var(--pos)}.down{color:var(--neg)}.flat{color:var(--ink2)}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px}
+.note{font-size:12.5px;color:var(--ink2)}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{padding:7px 8px;text-align:right;border-bottom:1px solid var(--grid);white-space:nowrap}
+th:first-child,td:first-child{text-align:left;white-space:normal}
+th{font-weight:600;color:var(--ink2);font-size:12px;vertical-align:bottom}
+td.n{font-variant-numeric:tabular-nums}
+tr.grp td{font-weight:650;color:var(--ink2);font-size:12px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--axis);padding-top:14px}
+tr.tot td{font-weight:650}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.flag{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--grid);align-items:flex-start}
+.flag:last-child{border-bottom:0}
+.ico{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;color:#0b0b0b;margin-top:1px}
+.ico.i-critical{background:var(--critical);color:#fff}.ico.i-serious{background:var(--serious)}
+.ico.i-warning{background:var(--warning)}.ico.i-good{background:var(--good);color:#fff}.ico.i-info{background:var(--axis);color:var(--ink)}
+.flag b{font-weight:600}
+.row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--grid);align-items:baseline}
+.row:last-child{border-bottom:0}
+.tag{font-size:11px;border:1px solid var(--border);border-radius:5px;padding:0 6px;color:var(--ink2);white-space:nowrap}
+.tag.att{border-color:var(--serious);color:var(--ink)}
+button.btn,label.btn{font:inherit;font-size:14px;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 14px;cursor:pointer;display:inline-block}
+button.btn.sec,label.btn.sec{background:var(--wash);color:var(--ink);border:1px solid var(--border)}
+input[type=text],input[type=url]{font:inherit;width:100%;padding:9px 10px;border:1px solid var(--axis);border-radius:8px;background:var(--surface);color:var(--ink)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.chips button{font:inherit;font-size:13px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:99px;padding:3px 12px;cursor:pointer}
+.chips button[aria-pressed=true]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+svg text{font:11px system-ui,-apple-system,sans-serif;fill:var(--ink2)}
+.bar{transition:opacity .12s}
+.bar:hover,.bar:focus{outline:none;opacity:.8}
+#tip{position:fixed;z-index:20;pointer-events:none;background:var(--surface);border:1px solid var(--axis);border-radius:8px;padding:8px 10px;font-size:12.5px;box-shadow:0 4px 16px rgba(0,0,0,.18);display:none;max-width:240px}
+#tip .t{color:var(--ink2);margin-bottom:3px}
+#tip .r{display:flex;gap:8px;align-items:center}
+#tip .k{width:12px;height:3px;border-radius:2px;flex:none}
+#tip strong{font-weight:650}
+.legend{display:flex;gap:14px;font-size:12.5px;color:var(--ink2);margin:0 0 6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+details{margin-top:8px;font-size:13px}
+summary{cursor:pointer;color:var(--ink2)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:84px;background:var(--ink);color:var(--surface);padding:9px 14px;border-radius:9px;font-size:13px;z-index:30;max-width:90%}
+.drop{border:1.5px dashed var(--axis);border-radius:12px;padding:16px;text-align:center}
+.drop.over{background:var(--wash);border-color:var(--accent)}
+.ok{color:var(--pos)}.bad{color:var(--neg)}
+footer{color:var(--muted);font-size:12px;margin-top:22px;text-align:center}
+@media(forced-colors:active){.bar{stroke:CanvasText}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1 id="co">Langdon Customs and Excise Solutions Ltd</h1>
+  <div class="sub"><span class="chip"><span class="dot"></span><span id="status">Active</span></span>
+    <span>No. 14230172</span><span>Inc. 12 Jul 2022</span>
+    <a id="chlink" href="https://find-and-update.company-information.service.gov.uk/company/14230172" target="_blank" rel="noopener">Companies House ↗</a></div>
+  <div class="note" id="fresh" style="margin-top:4px"></div>
+</header>
+
+<nav role="tablist" aria-label="Sections">
+  <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+  <button role="tab" data-tab="accounts" aria-selected="false">Accounts</button>
+  <button role="tab" data-tab="people" aria-selected="false">People</button>
+  <button role="tab" data-tab="filings" aria-selected="false">Filings</button>
+  <button role="tab" data-tab="setup" aria-selected="false">Setup</button>
+</nav>
+
+<section id="t-overview"></section>
+<section id="t-accounts" hidden></section>
+<section id="t-people" hidden></section>
+<section id="t-filings" hidden></section>
+<section id="t-setup" hidden></section>
+<footer id="ver"></footer>
+</div>
+<div id="tip" role="status"></div>
+
+<script>
+'use strict';
+const VERSION='v2026-10-02.1';
+const COMPANY='14230172';
+const KEY='langdon.monitor.v1';
+
+/* ---------- Seed data (from Companies House pages and the filed accounts; see Setup for sources) ---------- */
+const BS_KEYS=['fixedAssets','ppe','tradeDebtors','prepayments','otherDebtors','debtors','cash','currentAssets','vat','tradeCreditors','taxSocSec','otherCreditorsWithin','accruals','creditorsWithin','netCurrent','totalLessCL','creditorsAfter','netAssets','shareCapital','retained','employees','turnover','grossProfit','operatingProfit','profit'];
+const SEED={
+  periods:{
+    '2024-12-31':{end:'2024-12-31',start:'2024-01-01',audit:'Audit-exempt (total exemption)',srcEnd:'2025-12-31',
+      src:'Comparative column in Dec 2025 accounts',
+      v:{ppe:37420,tradeDebtors:114295,prepayments:50272,otherDebtors:33775,debtors:198342,cash:844146,currentAssets:1042488,
+         vat:89013,tradeCreditors:23808,taxSocSec:43152,otherCreditorsWithin:465129,accruals:50500,creditorsWithin:671602,
+         netCurrent:370886,totalLessCL:408306,creditorsAfter:157500,netAssets:250806,shareCapital:134,retained:250672,employees:14}},
+    '2025-12-31':{end:'2025-12-31',start:'2025-01-01',audit:'Unaudited, audit-exempt (filleted)',srcEnd:'2025-12-31',
+      src:'Accounts filed 30 Sep 2026',
+      v:{ppe:31085,tradeDebtors:116215,prepayments:76731,otherDebtors:13,debtors:192959,cash:1079828,currentAssets:1272787,
+         vat:55804,tradeCreditors:177362,taxSocSec:28294,otherCreditorsWithin:409976,accruals:40000,creditorsWithin:711436,
+         netCurrent:561351,totalLessCL:592436,creditorsAfter:157500,netAssets:434936,shareCapital:134,retained:434802,employees:17}}
+  },
+  officers:[
+    {id:'P9NfACEaTiVaZljUjnYM9FuWn5A',name:'HEWLETT, Christopher James',role:'Director',appointed:'2022-07-12'},
+    {id:'q3XwOq_cKn2DO9Mt_rYVDCurQ-k',name:'WHITE, Mark Lincoln',role:'Director',appointed:'2022-09-22'},
+    {id:'RN2iVBQjj68oLh6b5OxpW2AqdRk',name:'MASON, Sharon',role:'Director',appointed:'2023-11-13'},
+    {id:'gn9PUvGb1EOB1gud5Y3LDI1JKHg',name:'RICHARDSON, Samuel Edward',role:'Director',appointed:'2023-11-13'},
+    {id:'mC35wspxMiqYgQK9ZVYvDcLEtuc',name:'WINSTANLEY, Gary Lee Jon',role:'Director',appointed:'2023-11-13'},
+    {id:'X-7dYHECkdfCPXC6f1EZr8TGNu0',name:'WHITE, Rachel',role:'Secretary',appointed:'2022-09-30'},
+    {id:'E2WCbbVTQ65FZ2C4HiYKQQm3ScI',name:'HUNT-MASON, Nickie Reames',role:'Director',appointed:'2022-10-20',resigned:'2023-02-10'},
+    {id:'GNZLQvpxTxbmp1PnKDS-S6EIxJA',name:'NEWLANDS, Andrew John',role:'Director',appointed:'2022-07-12',resigned:'2022-09-22'}
+  ],
+  // [date, type, category, description, attention?]
+  filings:[
+    ['2026-09-30','AA','accounts','Total exemption full accounts made up to 31 December 2025'],
+    ['2026-09-23','CS01','confirmation','Replacement filing of confirmation statement dated 11 July 2026',1],
+    ['2026-09-23','CS01','confirmation','Replacement filing of confirmation statement dated 11 July 2025',1],
+    ['2026-09-23','CS01','confirmation','Replacement filing of confirmation statement dated 11 July 2024',1],
+    ['2026-09-23','CS01','confirmation','Replacement filing of confirmation statement dated 11 July 2023',1],
+    ['2026-08-27','CS01','confirmation','Confirmation statement made on 11 July 2026 with no updates (a second filed CS01, statement of capital and shareholder information, was replaced on 23/09/2026)'],
+    ['2026-08-14','PSC04','psc','Change of details for Mr Christopher James Hewlett as a person with significant control on 11 July 2026',1],
+    ['2025-09-26','AA','accounts','Total exemption full accounts made up to 31 December 2024'],
+    ['2025-07-18','CS01','confirmation','Confirmation statement made on 11 July 2025 with no updates'],
+    ['2024-07-17','CS01','confirmation','Confirmation statement made on 11 July 2024 with updates'],
+    ['2024-06-18','AD01','address','Registered office changed from Providence House, River Street, Windsor SL4 1QT to 23 Victoria Street, Windsor SL4 1HE'],
+    ['2024-03-22','AA','accounts','Total exemption full accounts made up to 31 December 2023'],
+    ['2024-03-22','AA','accounts','Total exemption full accounts made up to 31 March 2023'],
+    ['2024-03-20','AA01','accounts','Previous accounting period shortened from 31 March 2024 to 31 December 2023'],
+    ['2024-03-16','DISS40','gazette','Compulsory strike-off action discontinued',1],
+    ['2024-03-12','GAZ1','gazette','First Gazette notice for compulsory strike-off',1],
+    ['2023-11-20','AP01','officers','Appointment of Mr Gary Lee Jon Winstanley as a director on 13 November 2023'],
+    ['2023-11-20','AP01','officers','Appointment of Mr Samuel Edward Richardson as a director on 13 November 2023'],
+    ['2023-11-20','AP01','officers','Appointment of Mrs Sharon Mason as a director on 13 November 2023'],
+    ['2023-07-24','CS01','confirmation','Confirmation statement made on 11 July 2023 with updates'],
+    ['2023-02-10','TM01','officers','Termination of appointment of Nickie Reames Hunt-Mason as a director on 10 February 2023'],
+    ['2022-10-21','AP01','officers','Appointment of Mrs Nickie Reames Hunt-Mason as a director on 20 October 2022'],
+    ['2022-10-07','SH02','capital','Sub-division of shares on 30 September 2022'],
+    ['2022-10-07','MA','other','Memorandum and Articles of Association; resolutions (sub-division, change of name)'],
+    ['2022-10-03','AP03','officers','Appointment of Mrs Rachel White as a secretary on 30 September 2022'],
+    ['2022-10-03','PSC04','psc','Change of details for Mr Christopher James Hewlett as a person with significant control on 30 September 2022'],
+    ['2022-10-03','PSC01','psc','Notification of Rachel White as a person with significant control on 30 September 2022'],
+    ['2022-09-30','CERTNM','other','Company name changed from Langdon Fiscal Solutions Ltd'],
+    ['2022-09-26','RPCH01','officers','Correction of a director’s date of birth incorrectly stated on incorporation (Andrew John Newlands)'],
+    ['2022-09-23','AP01','officers','Appointment of Mr Mark Lincoln White as a director on 22 September 2022'],
+    ['2022-09-23','TM01','officers','Termination of appointment of Andrew John Newlands as a director on 22 September 2022']
+  ],
+  coverage:'Seeded from the filing history page (to Sep 2025, plus page 1 of the public site) and a screenshot of the Aug–Sep 2026 entries. Entries between 14 Aug 2026 and 26 Sep 2025 have not been seen. Connect the Worker to replace this with the full register.',
+  deadlines:{confirmationDue:'2027-07-25',confirmationDate:'2027-07-11'}
+};
+
+/* ---------- State ---------- */
+let S=load();
+function load(){
+  try{const r=localStorage.getItem(KEY);if(r){const s=JSON.parse(r);if(s&&s.periods)return s}}catch(e){}
+  return {periods:structuredClone(SEED.periods),officers:structuredClone(SEED.officers),filings:SEED.filings.map(f=>({date:f[0],type:f[1],cat:f[2],desc:f[3],att:!!f[4]})),
+    links:{},events:[],settings:{worker:''},lastCheck:null,baselined:false,coverage:SEED.coverage};
+}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+
+/* ---------- Helpers ---------- */
+const $=s=>document.querySelector(s);
+function h(tag,attrs,...kids){
+  const e=document.createElement(tag);
+  for(const[k,v]of Object.entries(attrs||{})){
+    if(v==null||v===false)continue;
+    if(k==='class')e.className=v;else if(k==='text')e.textContent=v;else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);
+    else e.setAttribute(k,v===true?'':v);
+  }
+  for(const k of kids.flat()){if(k==null||k===false)continue;e.append(k.nodeType?k:document.createTextNode(k))}
+  return e;
+}
+const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const d0=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(Date.UTC(y,m-1,d))};
+const iso=d=>d.toISOString().slice(0,10);
+const fmtD=s=>{const d=d0(s);return `${d.getUTCDate()} ${MN[d.getUTCMonth()].slice(0,3)} ${d.getUTCFullYear()}`};
+const fmtDL=s=>{const d=d0(s);return `${d.getUTCDate()} ${MN[d.getUTCMonth()]} ${d.getUTCFullYear()}`};
+const gbp=n=>n==null?'—':(n<0?'−':'')+'£'+Math.abs(Math.round(n)).toLocaleString('en-GB');
+const num=n=>n==null?'—':(n<0?'−':'')+Math.abs(Math.round(n)).toLocaleString('en-GB');
+function gbpC(n){if(n==null)return'—';const a=Math.abs(n),s=n<0?'−':'';
+  if(a>=1e6)return s+'£'+(a/1e6).toFixed(2)+'m';if(a>=1e4)return s+'£'+Math.round(a/1e3)+'k';if(a>=1e3)return s+'£'+(a/1e3).toFixed(1)+'k';return s+'£'+Math.round(a)}
+const pct=(a,b)=>(b==null||a==null||b===0)?null:(a-b)/Math.abs(b)*100;
+const fmtPct=p=>p==null?'':(p>0?'+':p<0?'−':'')+Math.abs(p).toFixed(Math.abs(p)<10?1:0)+'%';
+const today=()=>iso(new Date());
+function months(start,end){return Math.round((d0(end)-d0(start))/864e5/30.4375*10)/10}
+function parseLongDate(t){const m=/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/.exec(t);if(!m)return null;const i=MN.findIndex(x=>x.toLowerCase()===m[2].toLowerCase());return i<0?null:iso(new Date(Date.UTC(+m[3],i,+m[1])))}
+const sortedPeriods=()=>Object.values(S.periods).sort((a,b)=>a.end<b.end?-1:1);
+function pLabel(p){const m=p.start?months(p.start,p.end):null;const d=d0(p.end);
+  return `${MN[d.getUTCMonth()].slice(0,3)} ${d.getUTCFullYear()}`+(m&&Math.abs(m-12)>0.6?` (${m}m)`:'')}
+function toast(msg){const t=h('div',{class:'toast',text:msg});document.body.append(t);setTimeout(()=>t.remove(),4200)}
+
+/* ---------- iXBRL importer ---------- */
+const NS={ix:'http://www.xbrl.org/2013/inlineXBRL',xb:'http://www.xbrl.org/2003/instance',di:'http://xbrl.org/2006/xbrldi'};
+const loc=s=>(s||'').split(':').pop();
+function mapFact(name,dims){
+  const dk=Object.keys(dims);const none=dk.length===0;
+  const mat=dims.MaturitiesOrExpirationPeriodsDimension;
+  const onlyMat=dk.length===1&&dk[0]==='MaturitiesOrExpirationPeriodsDimension';
+  const within=none||(onlyMat&&mat==='WithinOneYear');
+  switch(name){
+    case 'FixedAssets':return none?'fixedAssets':null;
+    case 'PropertyPlantEquipment':return none?'ppe':null;
+    case 'Debtors':return within?'debtors':null;
+    case 'TradeDebtorsTradeReceivables':return within?'tradeDebtors':null;
+    case 'PrepaymentsAccruedIncome':return within?'prepayments':null;
+    case 'OtherDebtors':return within?'otherDebtors':null;
+    case 'CashBankOnHand':return none?'cash':null;
+    case 'CurrentAssets':return none?'currentAssets':null;
+    case 'Creditors':return onlyMat&&mat==='WithinOneYear'?'creditorsWithin':onlyMat&&mat==='AfterOneYear'?'creditorsAfter':null;
+    case 'Value-addedTaxPayable':return within?'vat':null;
+    case 'TradeCreditorsTradePayables':return within?'tradeCreditors':null;
+    case 'TaxationSocialSecurityPayable':return within?'taxSocSec':null;
+    case 'OtherCreditors':return onlyMat&&mat==='WithinOneYear'?'otherCreditorsWithin':null;
+    case 'AccruedLiabilities':case 'AccruedLiabilitiesDeferredIncome':return within?'accruals':null;
+    case 'NetCurrentAssetsLiabilities':return none?'netCurrent':null;
+    case 'TotalAssetsLessCurrentLiabilities':return none?'totalLessCL':null;
+    case 'NetAssetsLiabilities':return none?'netAssets':null;
+    case 'Equity':{const e=dims.EquityClassesDimension;
+      if(e==='ShareCapital')return 'shareCapital';if(e==='RetainedEarningsAccumulatedLosses')return 'retained';return null}
+    case 'AverageNumberEmployeesDuringPeriod':return none?'employees':null;
+    case 'TurnoverRevenue':return none?'turnover':null;
+    case 'GrossProfitLoss':return none?'grossProfit':null;
+    case 'OperatingProfitLoss':return none?'operatingProfit':null;
+    case 'ProfitLoss':return none?'profit':null;
+  }
+  return null;
+}
+function parseIxbrl(text){
+  const doc=new DOMParser().parseFromString(text,'application/xhtml+xml');
+  if(doc.getElementsByTagName('parsererror').length)throw new Error('That file is not valid iXBRL (XHTML).');
+  const ctx={};
+  for(const c of doc.getElementsByTagNameNS(NS.xb,'context')){
+    const q=n=>{const e=c.getElementsByTagNameNS(NS.xb,n)[0];return e?e.textContent.trim():null};
+    const dims={};for(const m of c.getElementsByTagNameNS(NS.di,'explicitMember'))dims[loc(m.getAttribute('dimension'))]=loc(m.textContent.trim());
+    ctx[c.getAttribute('id')]={instant:q('instant'),start:q('startDate'),end:q('endDate'),dims};
+  }
+  if(!Object.keys(ctx).length)throw new Error('No XBRL contexts found: is this the iXBRL download (not the PDF)?');
+  const per={};let reportEnd=null,name=null,audit=null;
+  const get=p=>per[p]||(per[p]={end:p,start:null,v:{}});
+  for(const e of doc.getElementsByTagNameNS(NS.ix,'nonFraction')){
+    const c=ctx[e.getAttribute('contextRef')];if(!c)continue;
+    let dims=c.dims;
+    if(loc(e.getAttribute('name'))==='Equity'){dims={...dims};delete dims.RestatementsFirstTimeAdoptionDimension}
+    const key=mapFact(loc(e.getAttribute('name')),dims);if(!key)continue;
+    const fmt=(e.getAttribute('format')||'').toLowerCase();let t=e.textContent.trim();let v;
+    if(/zerodash|fixed-zero|zerodot|zero/.test(fmt)||t==='-'||t==='—'||t==='')v=0;
+    else{t=/numcommadecimal|numspacecomma/.test(fmt)?t.replace(/[.\s]/g,'').replace(',','.'):t.replace(/[,\s]/g,'');v=parseFloat(t)}
+    if(!isFinite(v))continue;
+    v*=Math.pow(10,+(e.getAttribute('scale')||0));if(e.getAttribute('sign')==='-')v=-v;
+    const p=c.instant||c.end;const P=get(p);
+    if(c.start&&(!P.start||c.start<P.start))P.start=c.start;
+    if(!(key in P.v))P.v[key]=v;
+  }
+  for(const e of doc.getElementsByTagNameNS(NS.ix,'nonNumeric')){
+    const n=loc(e.getAttribute('name')),t=e.textContent.replace(/\s+/g,' ').trim();
+    if(n==='EndDateForPeriodCoveredByReport'&&!reportEnd)reportEnd=parseLongDate(t);
+    if(n==='EntityCurrentLegalOrRegisteredName'&&!name)name=t;
+    if(n==='ReportTitle'&&!audit)audit=t;
+  }
+  const dated=Object.keys(per).filter(k=>Object.keys(per[k].v).length>3).sort();
+  if(!dated.length)throw new Error('No balance sheet figures found in that file.');
+  if(!reportEnd)reportEnd=dated[dated.length-1];
+  return {periods:per,reportEnd,name,audit};
+}
+function integrity(v){
+  const out=[],T=2,has=(...k)=>k.every(x=>v[x]!=null);
+  const chk=(label,a,b)=>out.push({label,ok:Math.abs(a-b)<=T,a,b});
+  if(has('debtors','cash','currentAssets')&&v.currentAssets>=v.debtors+v.cash-T)chk('Debtors + cash = current assets',v.debtors+v.cash,v.currentAssets);
+  if(has('currentAssets','creditorsWithin','netCurrent'))chk('Current assets − creditors <1yr = net current assets',v.currentAssets-v.creditorsWithin,v.netCurrent);
+  if(has('netCurrent','totalLessCL'))chk('Net current assets + fixed assets = total assets less CL',v.netCurrent+(v.ppe||0)+(v.fixedAssets||0),v.totalLessCL);
+  if(has('totalLessCL','netAssets'))chk('Total assets less CL − creditors >1yr = net assets',v.totalLessCL-(v.creditorsAfter||0),v.netAssets);
+  if(has('shareCapital','retained','netAssets'))chk('Share capital + reserves = net assets',v.shareCapital+v.retained,v.netAssets);
+  return out;
+}
+function mergeImport(res,srcLabel){
+  const added=[],updated=[],notes=[];
+  for(const[p,inc]of Object.entries(res.periods)){
+    if(Object.keys(inc.v).length<4)continue;
+    if(!inc.start){inc.start=null}
+    const ex=S.periods[p];
+    if(!ex||res.reportEnd>=ex.srcEnd){
+      const prev=ex&&ex.v;
+      S.periods[p]={end:p,start:inc.start||(ex&&ex.start)||null,srcEnd:res.reportEnd,src:p===res.reportEnd?srcLabel:'Comparative column in accounts to '+fmtD(res.reportEnd),
+        audit:p===res.reportEnd?(res.audit||'Unaudited'):(ex&&ex.audit)||'Audit-exempt (total exemption)',v:inc.v};
+      if(prev){const diff=Object.keys(inc.v).filter(k=>prev[k]!=null&&Math.abs(prev[k]-inc.v[k])>1);
+        if(diff.length&&ex.srcEnd!==res.reportEnd)notes.push(`${pLabel(S.periods[p])}: ${diff.length} figure(s) differ from the earlier filing (${diff.join(', ')})`)}
+      (ex?updated:added).push(p);
+    }else{
+      const diff=Object.keys(inc.v).filter(k=>ex.v[k]!=null&&Math.abs(ex.v[k]-inc.v[k])>1);
+      if(diff.length){ex.restated=(ex.restated||[]).concat(`Original filing to ${fmtD(res.reportEnd)} differs on: ${diff.join(', ')}`);notes.push(`${pLabel(ex)}: original filing differs from the later comparative on ${diff.join(', ')}`)}
+    }
+  }
+  // fill missing start dates (12-month assumption only when the previous period end is known)
+  const ps=sortedPeriods();
+  ps.forEach((p,i)=>{if(!p.start&&i>0){const d=d0(ps[i-1].end);d.setUTCDate(d.getUTCDate()+1);p.start=iso(d)}});
+  const first=ps[0];if(first&&!first.start&&first.end==='2023-03-31')first.start='2022-07-12';
+  save();return{added,updated,notes};
+}
+async function importFiles(files){
+  for(const f of files){
+    try{
+      const res=parseIxbrl(await f.text());
+      const r=mergeImport(res,'Imported '+f.name);
+      const msg=`${f.name}: ${[...r.added.map(p=>'added '+p.slice(0,7)),...r.updated.map(p=>'updated '+p.slice(0,7))].join(', ')||'nothing new'}`;
+      S.events.unshift({at:new Date().toISOString(),sev:'info',text:'Accounts imported: '+msg+(r.notes.length?' — '+r.notes.join('; '):'')});
+      save();toast(msg);
+    }catch(e){toast(f.name+': '+e.message)}
+  }
+  S.events=S.events.slice(0,100);save();renderAll();
+}
+
+/* ---------- Derived figures & flags ---------- */
+const ratio=(a,b)=>(a==null||!b)?null:a/b;
+function derived(p){const v=p.v;return{
+  currentRatio:ratio(v.currentAssets,v.creditorsWithin),
+  cashCover:ratio(v.cash,v.creditorsWithin),
+  otherCreditorsTotal:(v.otherCreditorsWithin!=null&&v.creditorsAfter!=null)?v.otherCreditorsWithin+v.creditorsAfter:null}}
+function reserveChange(i,ps){return i>0&&ps[i].v.retained!=null&&ps[i-1].v.retained!=null?ps[i].v.retained-ps[i-1].v.retained:null}
+const LABELS={fixedAssets:'Fixed assets',ppe:'Tangible fixed assets',tradeDebtors:'Trade debtors',prepayments:'Prepayments & accrued income',otherDebtors:'Other debtors',debtors:'Total debtors',cash:'Cash at bank and in hand',currentAssets:'Current assets',vat:'VAT payable',tradeCreditors:'Trade creditors',taxSocSec:'Tax & social security',otherCreditorsWithin:'Other creditors',accruals:'Accruals',creditorsWithin:'Creditors due within 1 year',netCurrent:'Net current assets',totalLessCL:'Total assets less current liabilities',creditorsAfter:'Creditors due after 1 year',netAssets:'Net assets',shareCapital:'Share capital',retained:'Retained earnings',employees:'Average employees',turnover:'Turnover',grossProfit:'Gross profit',operatingProfit:'Operating profit',profit:'Profit for the year'};
+function movementFlags(){
+  const ps=sortedPeriods();if(ps.length<2)return[];
+  const a=ps[ps.length-1],b=ps[ps.length-2],out=[];
+  const span=`${pLabel(b)} → ${pLabel(a)}`;
+  for(const k of ['cash','debtors','tradeDebtors','prepayments','otherDebtors','vat','tradeCreditors','taxSocSec','otherCreditorsWithin','accruals','creditorsWithin','ppe']){
+    const x=a.v[k],y=b.v[k];if(x==null||y==null)continue;const d=x-y,p=pct(x,y);
+    const asset=['cash','debtors','tradeDebtors','prepayments','otherDebtors','ppe'].includes(k);
+    const favourable=asset?d>0:d<0;
+    if(Math.abs(d)>=10000&&(p==null||Math.abs(p)>=25))out.push({sev:favourable?'info':(Math.abs(p||0)>=100?'serious':'warning'),k,d,p,
+      text:`${LABELS[k]} ${d>0?'rose':'fell'} ${gbp(Math.abs(d))} to ${gbp(x)}${p!=null?` (${fmtPct(p)})`:''}`,sub:span});
+  }
+  return out.sort((m,n)=>Math.abs(n.d)-Math.abs(m.d));
+}
+
+/* ---------- Tooltip + charts ---------- */
+const tip=$('#tip');
+function showTip(ev,title,rows){
+  tip.replaceChildren(h('div',{class:'t',text:title}),...rows.map(r=>h('div',{class:'r'},r.color?h('span',{class:'k',style:`background:${r.color}`}):null,h('strong',{text:r.value}),h('span',{text:r.name||''}))));
+  tip.style.display='block';
+  const w=tip.offsetWidth,x=Math.min(Math.max(8,ev.clientX+14),innerWidth-w-8);
+  tip.style.left=x+'px';tip.style.top=Math.max(8,ev.clientY-tip.offsetHeight-12)+'px';
+}
+const hideTip=()=>{tip.style.display='none'};
+function niceMax(v){const e=Math.pow(10,Math.floor(Math.log10(v||1))),f=v/e;return(f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*e}
+function svgEl(n,a){const e=document.createElementNS('http://www.w3.org/2000/svg',n);for(const[k,v]of Object.entries(a||{}))e.setAttribute(k,v);return e}
+function columns({labels,series,fmt=gbp}){
+  const W=520,H=230,L=46,R=10,T=18,B=30,iw=W-L-R,ih=H-T-B;
+  const svg=svgEl('svg',{viewBox:`0 0 ${W} ${H}`,role:'img',width:'100%'});
+  const maxv=niceMax(Math.max(1,...series.flatMap(s=>s.values.filter(x=>x!=null))));
+  const ticks=4,y=v=>T+ih-(v/maxv)*ih;
+  for(let i=0;i<=ticks;i++){const v=maxv/ticks*i;
+    svg.append(svgEl('line',{x1:L,x2:W-R,y1:y(v),y2:y(v),stroke:i?'var(--grid)':'var(--axis)','stroke-width':1}));
+    const t=svgEl('text',{x:L-6,y:y(v)+4,'text-anchor':'end'});t.textContent=gbpC(v).replace('.00','');svg.append(t)}
+  const n=labels.length,band=iw/n,sn=series.length,bw=Math.min(24,(band*.6-2*(sn-1))/sn),groupW=bw*sn+2*(sn-1);
+  labels.forEach((lab,i)=>{
+    const gx=L+band*i+(band-groupW)/2;
+    const t=svgEl('text',{x:L+band*i+band/2,y:H-10,'text-anchor':'middle'});t.textContent=lab;svg.append(t);
+    series.forEach((s,j)=>{
+      const v=s.values[i];if(v==null)return;const x=gx+j*(bw+2),top=y(Math.max(v,0)),hh=Math.max(1,y(0)-top),r=Math.min(4,bw/2,hh);
+      const path=svgEl('path',{d:`M${x},${top+hh} V${top+r} Q${x},${top} ${x+r},${top} H${x+bw-r} Q${x+bw},${top} ${x+bw},${top+r} V${top+hh} Z`,fill:s.color,class:'bar',tabindex:0,
+        'aria-label':`${lab}: ${s.name} ${fmt(v)}`});
+      const show=ev=>{const rect=path.getBoundingClientRect();showTip(ev.clientX!==undefined&&ev.type!=='focus'?ev:{clientX:rect.left+rect.width/2,clientY:rect.top},lab,
+        series.map(q=>({name:q.name,value:fmt(q.values[i]),color:q.color})))};
+      path.addEventListener('pointermove',show);path.addEventListener('focus',show);path.addEventListener('pointerleave',hideTip);path.addEventListener('blur',hideTip);
+      svg.append(path);
+      if(i===n-1){const tx=svgEl('text',{x:x+bw/2,y:top-5,'text-anchor':'middle'});tx.style.fill='var(--ink)';tx.style.fontWeight='600';tx.textContent=gbpC(v);svg.append(tx)}
+    });
+  });
+  return svg;
+}
+function dataTable(labels,series,fmt=gbp){
+  return h('details',{},h('summary',{text:'View as table'}),h('div',{class:'scroll'},h('table',{},
+    h('thead',{},h('tr',{},h('th',{text:''}),...labels.map(l=>h('th',{text:l})))),
+    h('tbody',{},...series.map(s=>h('tr',{},h('td',{text:s.name}),...s.values.map(v=>h('td',{class:'n',text:fmt(v)}))))))));
+}
+
+/* ---------- Renderers ---------- */
+function delta(a,b,{good='up',money=true,suffix=''}={}){
+  if(a==null||b==null)return h('span',{class:'delta flat',text:'no prior period'});
+  const d=a-b,p=pct(a,b),dir=d>0?'up':d<0?'down':'flat';
+  const cls=d===0?'flat':((d>0)===(good==='up'))?'up':'down';
+  const arrow=d>0?'▲':d<0?'▼':'■';
+  return h('span',{class:'delta '+cls},h('span',{'aria-hidden':'true',text:arrow}),`${d>0?'+':d<0?'−':''}${money?gbpC(Math.abs(d)).replace(/^−/,''):Math.abs(d).toFixed(2).replace(/\.00$/,'')}${p!=null?` (${fmtPct(p)})`:''}${suffix}`);
+}
+function accountsDue(){
+  const ps=sortedPeriods(),last=ps[ps.length-1];if(!last)return null;
+  const next=d0(last.end);next.setUTCFullYear(next.getUTCFullYear()+1);
+  const due=new Date(Date.UTC(next.getUTCFullYear(),next.getUTCMonth()+10,0)); // last day of the 9th month after year end
+  return{period:iso(next),due:iso(due)};
+}
+function daysTo(s){return Math.round((d0(s)-d0(today()))/864e5)}
+
+function renderOverview(){
+  const el=$('#t-overview'),ps=sortedPeriods(),a=ps[ps.length-1],b=ps[ps.length-2];
+  el.replaceChildren();
+  if(!a){el.append(h('div',{class:'card',text:'No accounts loaded. Use Accounts → Import.'}));return}
+  const dv=derived(a),dp=b?derived(b):{};
+  const evs=S.events.filter(e=>e.sev!=='info').slice(0,6);
+  if(evs.length){
+    el.append(h('div',{class:'card'},h('h2',{text:'Changes detected'}),...evs.map(e=>flagRow(e.sev,e.text,new Date(e.at).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'})))));
+  }
+  const hero=h('div',{class:'card'},h('div',{class:'lbl',text:`Net assets, ${fmtDL(a.end)}`}),
+    h('div',{class:'hero',text:gbp(a.v.netAssets)}),b?h('div',{},delta(a.v.netAssets,b.v.netAssets),h('span',{class:'note',text:` vs ${pLabel(b)}`})):null,
+    h('div',{class:'note',style:'margin-top:8px',text:a.audit+'. '+(a.v.turnover==null?'Filleted accounts: no profit and loss, so turnover and profit are not disclosed.':'')}));
+  el.append(hero);
+  const rc=reserveChange(ps.length-1,ps);
+  el.append(h('div',{class:'grid four',style:'margin-top:14px'},
+    tile('Cash',gbpC(a.v.cash),b&&delta(a.v.cash,b.v.cash)),
+    tile('Current ratio',dv.currentRatio==null?'—':dv.currentRatio.toFixed(2),b&&dp.currentRatio!=null?delta(dv.currentRatio,dp.currentRatio,{money:false}):null,'current assets ÷ creditors <1yr'),
+    tile('Employees',a.v.employees==null?'—':String(a.v.employees),b&&delta(a.v.employees,b.v.employees,{money:false})),
+    tile('Change in reserves',gbpC(rc),null,'profit less dividends, not profit alone')));
+  const mf=movementFlags(),att=[];
+  mf.slice(0,6).forEach(m=>att.push(flagRow(m.sev,m.text,m.sub)));
+  if(dv.otherCreditorsTotal!=null&&dv.otherCreditorsTotal>a.v.netAssets)att.push(flagRow('info',`Other creditors total ${gbp(dv.otherCreditorsTotal)} (${gbp(a.v.otherCreditorsWithin)} within a year, ${gbp(a.v.creditorsAfter)} after), more than net assets of ${gbp(a.v.netAssets)}.`,'The filleted accounts do not say who these are owed to'));
+  const grp={};
+  S.filings.filter(f=>f.att&&f.date>=addDays(today(),-400)).forEach(f=>{(grp[f.date+f.type]=grp[f.date+f.type]||[]).push(f)});
+  Object.values(grp).forEach(g=>{const f=g[0];
+    if(g.length>1&&g.every(x=>/^replacement/i.test(x.desc))){
+      const yrs=g.map(x=>(/(\d{4})\s*$/.exec(x.desc)||[])[1]).filter(Boolean).sort().join(', ');
+      att.push(flagRow('warning',`${g.length} replacement confirmation statements filed on one day`,`Filed ${fmtD(f.date)} (${f.type}), covering ${yrs}`));
+    }else g.forEach(x=>att.push(flagRow('warning',x.desc,`Filed ${fmtD(x.date)} (${x.type})`)))});
+  el.append(h('div',{class:'card'},h('h2',{text:'Worth a look'}),...att,att.length?null:h('div',{class:'note',text:'Nothing flagged.'})));
+  const labels=ps.map(pLabel);
+  const c1=h('div',{class:'card'},h('h2',{text:'Net assets by year end'}),
+    columns({labels,series:[{name:'Net assets',color:'var(--s1)',values:ps.map(p=>p.v.netAssets)}]}),
+    dataTable(labels,[{name:'Net assets',values:ps.map(p=>p.v.netAssets)}]),
+    ps.length<3?h('div',{class:'note',style:'margin-top:6px',text:'Only two year ends loaded. Import the Dec 2023 accounts (Accounts tab) to add Mar 2023 and Dec 2023.'}):null);
+  const sr=[{name:'Cash',color:'var(--s1)',values:ps.map(p=>p.v.cash)},{name:'Creditors due within 1 year',color:'var(--s2)',values:ps.map(p=>p.v.creditorsWithin)}];
+  const c2=h('div',{class:'card'},h('h2',{text:'Cash against short-term creditors'}),
+    h('div',{class:'legend'},...sr.map(s=>h('span',{},h('i',{style:`background:${s.color}`}),s.name))),columns({labels,series:sr}),dataTable(labels,sr));
+  el.append(h('div',{class:'grid two'},c1,c2));
+  const nd=accountsDue(),dd=[];
+  if(nd){const dt=daysTo(nd.due);dd.push(h('div',{class:'row'},h('span',{text:`Accounts for year to ${fmtD(nd.period)}`}),h('span',{},`due ${fmtD(nd.due)} `,h('span',{class:'tag',text:dt<0?`${-dt}d overdue`:`${dt}d`}))))}
+  const cs=SEED.deadlines;dd.push(h('div',{class:'row'},h('span',{text:'Next confirmation statement'}),h('span',{},`due ${fmtD(cs.confirmationDue)} `,h('span',{class:'tag',text:daysTo(cs.confirmationDue)+'d'}))));
+  el.append(h('div',{class:'card'},h('h2',{text:'Deadlines'}),...dd,
+    h('div',{class:'note',style:'margin-top:6px',text:'Accounts deadline is calculated (year end + 9 months); the confirmation date is from the register page.'})));
+  const rec=S.filings.slice(0,6);
+  el.append(h('div',{class:'card'},h('h2',{text:'Latest filings'}),...rec.map(f=>h('div',{class:'row'},h('span',{},h('span',{class:'tag'+(f.att?' att':''),text:f.type}),' '+f.desc),h('span',{class:'note',text:fmtD(f.date)})))));
+}
+function addDays(s,n){const d=d0(s);d.setUTCDate(d.getUTCDate()+n);return iso(d)}
+function tile(l,v,d,sub){return h('div',{class:'tile'},h('div',{class:'lbl',text:l}),h('div',{class:'val',text:v}),d?h('div',{},d):null,sub?h('div',{class:'note',text:sub}):null)}
+function flagRow(sev,text,sub){
+  const m={critical:['!','i-critical'],serious:['!','i-serious'],warning:['!','i-warning'],good:['✓','i-good'],info:['i','i-info']}[sev]||['i','i-info'];
+  return h('div',{class:'flag'},h('span',{class:'ico '+m[1],'aria-hidden':'true',text:m[0]}),h('div',{},h('div',{text:text}),sub?h('div',{class:'note',text:sub}):null));
+}
+
+function renderAccounts(){
+  const el=$('#t-accounts');el.replaceChildren();
+  const ps=sortedPeriods();
+  const head=h('tr',{},h('th',{text:''}),...ps.map(p=>h('th',{text:pLabel(p)})),ps.length>1?h('th',{text:'Change'}):null,ps.length>1?h('th',{text:'%'}):null);
+  const rows=[];
+  const sect=t=>rows.push(h('tr',{class:'grp'},h('td',{colspan:ps.length+3,text:t})));
+  const line=(k,cls)=>{
+    if(!ps.some(p=>p.v[k]!=null))return;
+    const a=ps[ps.length-1].v[k],b=ps.length>1?ps[ps.length-2].v[k]:null,d=(a!=null&&b!=null)?a-b:null,p=pct(a,b);
+    rows.push(h('tr',{class:cls||''},h('td',{text:LABELS[k]}),...ps.map(q=>h('td',{class:'n',text:k==='employees'?(q.v[k]??'—'):num(q.v[k])})),
+      ps.length>1?h('td',{class:'n',text:d==null?'':(d>0?'+':'')+num(d)}):null,ps.length>1?h('td',{class:'n',text:p==null?'':fmtPct(p)}):null));
+  };
+  sect('Profit and loss');['turnover','grossProfit','operatingProfit','profit'].forEach(k=>line(k));
+  if(!ps.some(p=>p.v.turnover!=null))rows.push(h('tr',{},h('td',{colspan:ps.length+3,class:'note',style:'text-align:left',text:'Not disclosed: these are filleted accounts (balance sheet only).'})));
+  sect('Assets');['fixedAssets','ppe','tradeDebtors','prepayments','otherDebtors','debtors','cash'].forEach(k=>line(k));line('currentAssets','tot');
+  sect('Liabilities');['vat','tradeCreditors','taxSocSec','otherCreditorsWithin','accruals'].forEach(k=>line(k));line('creditorsWithin','tot');line('netCurrent','tot');line('totalLessCL','tot');line('creditorsAfter');line('netAssets','tot');
+  sect('Equity and people');['shareCapital','retained','employees'].forEach(k=>line(k));
+  sect('Ratios');
+  const r=(l,f)=>rows.push(h('tr',{},h('td',{text:l}),...ps.map(p=>h('td',{class:'n',text:f(p)})),ps.length>1?h('td'):null,ps.length>1?h('td'):null));
+  r('Current ratio',p=>{const x=derived(p).currentRatio;return x==null?'—':x.toFixed(2)});
+  r('Cash ÷ creditors <1yr',p=>{const x=derived(p).cashCover;return x==null?'—':x.toFixed(2)});
+  r('Change in reserves',p=>{const i=ps.indexOf(p),x=reserveChange(i,ps);return x==null?'—':num(x)});
+  r('Period length (months)',p=>p.start?String(months(p.start,p.end)):'—');
+  r('Audit status',p=>p.audit.replace(/ \(.*\)/,''));
+  el.append(h('div',{class:'card'},h('h2',{text:'Balance sheet (£)'}),h('div',{class:'scroll'},h('table',{},h('thead',{},head),h('tbody',{},...rows))),
+    h('div',{class:'note',style:'margin-top:8px',text:'All filings so far are audit-exempt (total exemption), so there are no audited accounts to track. Periods differ in length: Mar 2023 is a short first period and Dec 2023 is nine months, so compare year-end positions rather than flows. "Change in reserves" is profit less dividends and other movements, not profit.'})));
+  const chk=h('div',{class:'card'},h('h2',{text:'Integrity checks on loaded figures'}));
+  ps.forEach(p=>{const cs=integrity(p.v);chk.append(h('div',{class:'row'},h('b',{text:pLabel(p)}),h('span',{class:'note',text:p.src})));
+    cs.forEach(c=>chk.append(h('div',{class:'row',style:'padding:4px 0'},h('span',{class:'note',text:c.label}),h('span',{class:c.ok?'ok':'bad',text:c.ok?'✓ ties':`✗ ${num(c.a)} vs ${num(c.b)}`}))));
+    if(p.restated&&p.restated.length)p.restated.forEach(t=>chk.append(flagRow('warning',t,'Possible restatement')))});
+  el.append(chk);
+  const dz=h('div',{class:'drop',id:'drop'},h('div',{text:'Import accounts: drop iXBRL (.xhtml) files here'}),
+    h('div',{class:'note',style:'margin:6px 0 10px',text:'On Companies House, open the accounts filing and use “Download iXBRL”. The Dec 2023 file also contains Mar 2023 as its comparative, so one file adds two periods. Later filings win where figures overlap.'}),
+    h('label',{class:'btn'},'Choose files',h('input',{type:'file',accept:'.xhtml,.html,.xml',multiple:true,style:'display:none',onchange:e=>{importFiles([...e.target.files]);e.target.value=''}})));
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over')});dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');importFiles([...e.dataTransfer.files])});
+  el.append(h('div',{class:'card'},dz));
+}
+
+function renderPeople(){
+  const el=$('#t-people');el.replaceChildren();
+  const cur=S.officers.filter(o=>!o.resigned),res=S.officers.filter(o=>o.resigned);
+  const wk=!!S.settings.worker;
+  const tenure=o=>{const m=months(o.appointed,o.resigned||today());return m>=12?(m/12).toFixed(1)+' yrs':m+' mo'};
+  const other=o=>{const l=S.links[o.id];if(!l)return wk?'not yet checked':'needs live check';
+    const act=Object.values(l).filter(x=>!x.resigned);return act.length+' active'+(Object.keys(l).length>act.length?`, ${Object.keys(l).length-act.length} resigned`:'')};
+  const tbl=(list,showRes)=>h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},h('th',{text:'Name'}),h('th',{text:'Role'}),h('th',{text:'Appointed'}),showRes?h('th',{text:'Resigned'}):h('th',{text:'Tenure'}),h('th',{text:'Other appointments'}))),
+    h('tbody',{},...list.map(o=>h('tr',{},h('td',{},h('a',{href:`https://find-and-update.company-information.service.gov.uk/officers/${o.id}/appointments`,target:'_blank',rel:'noopener',text:o.name})),
+      h('td',{text:o.role}),h('td',{class:'n',text:fmtD(o.appointed)}),h('td',{class:'n',text:showRes?fmtD(o.resigned):tenure(o)}),h('td',{text:other(o)}))))));
+  el.append(h('div',{class:'card'},h('h2',{text:`Current officers (${cur.length})`}),tbl(cur,false),
+    h('div',{class:'note',style:'margin-top:8px',text:'Three directors were appointed together on 13 Nov 2023, eight months before the March 2024 strike-off notice and the filing catch-up. Names link to each person’s other appointments on Companies House.'})));
+  el.append(h('div',{class:'card'},h('h2',{text:`Resigned (${res.length})`}),tbl(res,true)));
+  const lk=Object.entries(S.links).flatMap(([id,m])=>Object.entries(m).map(([n,c])=>({id,n,c,who:(S.officers.find(o=>o.id===id)||{}).name})));
+  el.append(h('div',{class:'card'},h('h2',{text:'Directors’ other companies'}),
+    lk.length?h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},h('th',{text:'Director'}),h('th',{text:'Company'}),h('th',{text:'Status'}),h('th',{text:'Appointed'}),h('th',{text:'Resigned'}))),
+      h('tbody',{},...lk.map(x=>h('tr',{},h('td',{text:x.who}),h('td',{},h('a',{href:`https://find-and-update.company-information.service.gov.uk/company/${x.n}`,target:'_blank',rel:'noopener',text:x.c.name||x.n})),h('td',{text:x.c.status||''}),h('td',{class:'n',text:x.c.appointed?fmtD(x.c.appointed):''}),h('td',{class:'n',text:x.c.resigned?fmtD(x.c.resigned):''}))))))
+    :h('div',{class:'note',text:wk?'Run a check from Setup to load other appointments.':'Needs the Worker (Setup tab). Companies House does not allow the browser to call it directly.'})));
+}
+
+function renderFilings(){
+  const el=$('#t-filings');el.replaceChildren();
+  const cats=[['all','All'],['accounts','Accounts'],['confirmation','Confirmation'],['officers','Officers'],['psc','PSC'],['address','Address'],['gazette','Gazette'],['attention','Flagged']];
+  const cur=el.dataset.f||'all';
+  const chips=h('div',{class:'chips',role:'group','aria-label':'Filter'},...cats.map(([k,l])=>h('button',{'aria-pressed':String(cur===k),text:l,onclick:()=>{el.dataset.f=k;renderFilings()}})));
+  const list=S.filings.filter(f=>cur==='all'||(cur==='attention'?f.att:f.cat===cur));
+  el.append(h('div',{class:'card'},chips,...list.map(f=>h('div',{class:'row'},h('span',{},h('span',{class:'tag'+(f.att?' att':''),text:f.type}),' ',f.desc),h('span',{class:'note',text:fmtD(f.date)}))),
+    !list.length?h('div',{class:'note',text:'Nothing in this category.'}):null,
+    S.coverage?h('div',{class:'note',style:'margin-top:10px',text:S.coverage}):null));
+}
+
+function renderSetup(){
+  const el=$('#t-setup');el.replaceChildren();
+  const w=S.settings.worker;
+  const inp=h('input',{type:'url',id:'wurl',placeholder:'https://langdon-ch.<your-subdomain>.workers.dev',value:w||'',autocapitalize:'off',autocomplete:'off'});
+  el.append(h('div',{class:'card'},h('h2',{text:'Live monitoring'}),
+    h('p',{class:'note',text:'Companies House blocks direct browser access, so live checks go through a small Cloudflare Worker (worker.js in this folder) that holds your API key. Without it the app shows the data it was seeded with and anything you import.'}),
+    inp,h('div',{style:'display:flex;gap:8px;margin-top:10px;flex-wrap:wrap'},
+      h('button',{class:'btn',onclick:()=>{S.settings.worker=inp.value.trim().replace(/\/$/,'');save();toast('Saved');renderAll()},text:'Save'}),
+      h('button',{class:'btn sec',onclick:()=>runCheck(true),text:'Run check now'})),
+    h('div',{class:'note',style:'margin-top:8px',text:S.lastCheck?'Last check: '+new Date(S.lastCheck).toLocaleString('en-GB'):'Never checked live.'}),
+    h('div',{class:'note',style:'margin-top:6px',text:'First live check takes a baseline (no alerts), fills in any accounts not yet loaded, then later checks report new directors, resignations, other-company appointments, new filings and new accounts.'})));
+  el.append(h('div',{class:'card'},h('h2',{text:'Data'}),
+    h('div',{style:'display:flex;gap:8px;flex-wrap:wrap'},
+      h('button',{class:'btn sec',text:'Export backup',onclick:()=>{const a=h('a',{href:URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'})),download:`langdon-monitor-${today()}.json`});a.click()}}),
+      h('label',{class:'btn sec'},'Restore backup',h('input',{type:'file',accept:'.json',style:'display:none',onchange:async e=>{try{const s=JSON.parse(await e.target.files[0].text());if(!s.periods)throw 0;S=s;save();renderAll();toast('Restored')}catch(_){toast('Not a valid backup')}}})),
+      h('button',{class:'btn sec',text:'Reset to seed data',onclick:()=>{if(confirm('Discard imported data and checks?')){localStorage.removeItem(KEY);S=load();renderAll()}}}))));
+  if(S.events.length)el.append(h('div',{class:'card'},h('h2',{text:'Activity log'}),...S.events.slice(0,15).map(e=>h('div',{class:'row'},h('span',{text:e.text}),h('span',{class:'note',text:new Date(e.at).toLocaleDateString('en-GB')})))));
+  el.append(h('div',{class:'card'},h('h2',{text:'Where the numbers came from'}),
+    h('div',{class:'note',text:'Dec 2025 and Dec 2024: parsed from the iXBRL accounts filed 30 Sep 2026 (the Dec 2024 column is the comparative in that filing). Officers and filings: Companies House public pages. Mar 2023 and Dec 2023: not yet loaded. Nothing here is taken from memory or estimated.'})));
+}
+
+function renderAll(){
+  renderOverview();renderAccounts();renderPeople();renderFilings();renderSetup();
+  const nm=S.lastCheck?'Live check '+new Date(S.lastCheck).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'}):'Seed data, not live';
+  const ps=sortedPeriods();
+  $('#fresh').textContent=`${nm}. Latest accounts: year to ${ps.length?fmtD(ps[ps.length-1].end):'n/a'}.`;
+  $('#ver').textContent='Langdon Monitor '+VERSION;
+}
+
+/* ---------- Live check via Worker ---------- */
+async function api(path){
+  const r=await fetch(S.settings.worker+path);
+  if(!r.ok)throw new Error(`${path} → ${r.status}`);return r.json();
+}
+async function runCheck(manual){
+  const w=S.settings.worker;if(!w){if(manual)toast('Add the Worker URL first');return}
+  try{
+    if(manual)toast('Checking Companies House…');
+    const [prof,off,fil]=await Promise.all([api(`/company/${COMPANY}`),api(`/company/${COMPANY}/officers?items_per_page=100`),api(`/company/${COMPANY}/filing-history?items_per_page=100`)]);
+    const ev=[],base=!S.baselined,now=new Date().toISOString();
+    const push=(sev,text)=>{if(!base)ev.push({at:now,sev,text})};
+    if(prof.company_status&&prof.company_status!=='active')push('critical',`Company status is now “${prof.company_status}”`);
+    if(prof.company_status)$('#status').textContent=prof.company_status.replace(/-/g,' ').replace(/^./,c=>c.toUpperCase());
+    // officers
+    const newOff=(off.items||[]).map(o=>{const id=((o.links&&o.links.officer&&o.links.officer.appointments)||'').split('/')[2]||o.name;
+      return{id,name:o.name,role:(o.officer_role||'').replace(/^./,c=>c.toUpperCase()),appointed:o.appointed_on,resigned:o.resigned_on||undefined}});
+    for(const o of newOff){const old=S.officers.find(x=>x.id===o.id||(x.name.toLowerCase()===o.name.toLowerCase()));
+      if(!old)push('serious',`New ${o.role.toLowerCase()} appointed: ${o.name} (${fmtD(o.appointed)})`);
+      else if(o.resigned&&!old.resigned)push('serious',`${o.name} resigned as ${o.role.toLowerCase()} (${fmtD(o.resigned)})`)}
+    S.officers=newOff;
+    // other appointments
+    for(const o of newOff.filter(x=>x.role!=='Secretary'||true)){
+      try{
+        const ap=await api(`/officers/${o.id}/appointments?items_per_page=50`);const cur={};
+        for(const it of ap.items||[]){const n=it.appointed_to&&it.appointed_to.company_number;if(!n||n===COMPANY)continue;
+          cur[n]={name:it.appointed_to.company_name,status:it.appointed_to.company_status,appointed:it.appointed_on,resigned:it.resigned_on||undefined}}
+        const old=S.links[o.id]||{};
+        for(const[n,c]of Object.entries(cur)){
+          if(!old[n])push('warning',`${o.name}: new appointment at ${c.name} (${n})${c.resigned?'':''}`);
+          else{if(c.resigned&&!old[n].resigned)push('warning',`${o.name} resigned from ${c.name}`);
+            if(c.status!==old[n].status)push('warning',`${c.name} (${o.name}) status changed: ${old[n].status} → ${c.status}`)}}
+        S.links[o.id]=cur;
+      }catch(e){console.warn('appointments',o.id,e.message)}
+    }
+    // filings
+    const live=(fil.items||[]).map(f=>({date:f.date,type:f.type,cat:mapCat(f.category,f.type),desc:cleanDesc(f),att:/GAZ|DISS|SOAS|STRIKE/.test(f.type||'')||/replacement/i.test(f.description||''),tid:f.transaction_id,meta:f.links&&f.links.document_metadata}));
+    const seen=new Set(S.filings.map(f=>f.tid).filter(Boolean));
+    if(S.filings.some(f=>!f.tid)){/* seeded list: baseline replaced wholesale on first run */}
+    if(!base)for(const f of live)if(!seen.has(f.tid))push(f.att?'serious':'info',`New filing (${f.type}): ${f.desc}, ${fmtD(f.date)}`);
+    S.filings=live;S.coverage=null;
+    // accounts: ingest any we do not hold
+    for(const f of live.filter(x=>x.cat==='accounts'&&x.meta&&/made up to/i.test(x.desc))){
+      const end=parseLongDate(f.desc);if(!end||(S.periods[end]&&S.periods[end].src&&!/Comparative/.test(S.periods[end].src)))continue;
+      try{const r=await fetch(`${w}/document?meta=${encodeURIComponent(f.meta)}`);if(!r.ok)throw new Error(r.status);
+        const m=mergeImport(parseIxbrl(await r.text()),'Companies House filing '+fmtD(f.date));
+        if(!base||m.added.length)ev.push({at:now,sev:'info',text:`Accounts loaded for year to ${fmtD(end)}`+(m.notes.length?' — '+m.notes.join('; '):'')})}
+      catch(e){console.warn('doc',e.message);ev.push({at:now,sev:'info',text:`Could not load iXBRL for ${fmtD(end)}: ${e.message}`})}
+    }
+    S.baselined=true;S.lastCheck=now;S.events=[...ev,...S.events].slice(0,100);save();renderAll();
+    if(manual)toast(base?'Baseline captured':ev.length?`${ev.length} change(s) found`:'No changes');
+  }catch(e){console.error(e);if(manual)toast('Check failed: '+e.message)}
+}
+function mapCat(c,t){c=c||'';if(c==='accounts')return'accounts';if(c==='confirmation-statement')return'confirmation';if(c==='officers')return'officers';
+  if(/psc|persons/.test(c)||/^PSC/.test(t||''))return'psc';if(c==='address')return'address';if(c==='gazette')return'gazette';if(c==='capital')return'capital';return'other'}
+function cleanDesc(f){const d=(f.description||'').replace(/-/g,' ');const dv=f.description_values||{};
+  return (f.description||'').replace(/\{(\w+)\}/g,(m,k)=>dv[k]||m).replace(/-/g,' ').replace(/^./,c=>c.toUpperCase())||d}
+
+/* ---------- Boot ---------- */
+document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.setAttribute('aria-selected',String(x===b)));
+  document.querySelectorAll('section').forEach(s=>s.hidden=s.id!=='t-'+b.dataset.tab);scrollTo(0,0);hideTip();
+}));
+window.__app={parseIxbrl,mapFact,integrity,mergeImport,get S(){return S}};
+renderAll();
+if('serviceWorker'in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+if(S.settings.worker&&(!S.lastCheck||Date.now()-new Date(S.lastCheck)>6*3600e3))runCheck(false);
+</script>
+</body>
+</html>
