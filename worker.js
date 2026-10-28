@@ -9,8 +9,13 @@ const DOCAPI = 'https://document-api.company-information.service.gov.uk/document
 
 export default {
   async fetch(req, env) {
+    // ALLOW_ORIGIN may be a comma-separated list; the header itself may only carry one origin,
+    // so echo back the caller's origin when it is on the list.
+    const allowed = (env.ALLOW_ORIGIN || '*').split(',').map(s => s.trim().replace(/\/$/, '')).filter(Boolean);
+    const origin = req.headers.get('Origin') || '';
+    const allowOrigin = allowed.includes('*') ? '*' : (allowed.includes(origin) ? origin : allowed[0]);
     const cors = {
-      'Access-Control-Allow-Origin': env.ALLOW_ORIGIN || '*',
+      'Access-Control-Allow-Origin': allowOrigin,
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
       'Vary': 'Origin',
     };
