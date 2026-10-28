@@ -131,7 +131,7 @@ footer{color:var(--muted);font-size:12px;margin-top:22px;text-align:center}
 
 <script>
 'use strict';
-const VERSION='v2026-10-05.3';
+const VERSION='v2026-10-28.1';
 const COMPANY='14230172';
 const KEY='langdon.monitor.v1';
 
@@ -481,6 +481,8 @@ function renderOverview(){
       const yrs=g.map(x=>(/(\d{4})\s*$/.exec(x.desc)||[])[1]).filter(Boolean).sort().join(', ');
       att.push(flagRow('warning',`${g.length} replacement confirmation statements filed on one day`,`Filed ${fmtD(f.date)} (${f.type}), covering ${yrs}`));
     }else g.forEach(x=>att.push(flagRow('warning',x.desc,`Filed ${fmtD(x.date)} (${x.type})`)))});
+  const dr=dirActRows();
+  if(dr.length)att.push(h('div',{class:'lbl',style:'margin-top:10px',text:'Director activity at other companies (last 90 days)'}),...dr);
   el.append(h('div',{class:'card'},h('h2',{text:'Worth a look'}),...att,att.length?null:h('div',{class:'note',text:'Nothing flagged.'})));
   const labels=ps.map(pLabel);
   const c1=h('div',{class:'card'},h('h2',{text:'Net assets by year end'}),
@@ -500,6 +502,18 @@ function renderOverview(){
   el.append(h('div',{class:'card'},h('h2',{text:'Latest filings'}),...rec.map(f=>h('div',{class:'row'},h('span',{},h('span',{class:'tag'+(f.att?' att':''),text:f.type}),' '+f.desc),h('span',{class:'note',text:fmtD(f.date)})))));
 }
 function addDays(s,n){const d=d0(s);d.setUTCDate(d.getUTCDate()+n);return iso(d)}
+// Director activity stays in Worth a look for 90 days from when it happened; a change Companies House
+// registered late (dated more than 90 days back) still gets 90 days from when the app first saw it.
+function actUntil(a){const d=a.date||'',s=(a.detected||'').slice(0,10);return addDays(d>s?d:s,90)}
+const stLabel=s=>(s||'unknown').replace(/-/g,' ');
+function dirActRows(){
+  return (S.dirActs||[]).filter(a=>daysTo(actUntil(a))>=0).sort((x,y)=>(y.date||'').localeCompare(x.date||''))
+    .map(a=>{const co=`${a.company} (${a.number})`,seen=`detected ${fmtD(a.detected.slice(0,10))}`;
+      if(a.kind==='appointed')return flagRow('warning',`${a.who} appointed at ${co}`,`Appointed ${fmtD(a.date)} · ${seen}`);
+      if(a.kind==='resigned')return flagRow('warning',`${a.who} resigned from ${co}`,`Resigned ${fmtD(a.date)} · ${seen}`);
+      const bad=/dissolved|liquidation|receivership|administration|insolvency|struck|removed/.test(a.to||'');
+      return flagRow(bad?'serious':'warning',`${co}, linked to ${a.who}: status changed from ${stLabel(a.from)} to ${stLabel(a.to)}`,seen)});
+}
 function tile(l,v,d,sub){return h('div',{class:'tile'},h('div',{class:'lbl',text:l}),h('div',{class:'val',text:v}),d?h('div',{},d):null,sub?h('div',{class:'note',text:sub}):null)}
 function flagRow(sev,text,sub){
   const m={critical:['!','i-critical'],serious:['!','i-serious'],warning:['!','i-warning'],good:['✓','i-good'],info:['i','i-info']}[sev]||['i','i-info'];
@@ -627,20 +641,34 @@ async function runCheck(manual){
       if(!old)push('serious',`New ${o.role.toLowerCase()} appointed: ${o.name} (${fmtD(o.appointed)})`);
       else if(o.resigned&&!old.resigned)push('serious',`${o.name} resigned as ${o.role.toLowerCase()} (${fmtD(o.resigned)})`)}
     S.officers=newOff;
-    // other appointments
-    for(const o of newOff.filter(x=>x.role!=='Secretary'||true)){
+    // other appointments of every Langdon officer, current and former: details go to S.dirActs (shown in Worth a look),
+    // and Changes detected gets a single summary line
+    S.dirActs=S.dirActs||[];let dirN=0;
+    const today0=now.slice(0,10);
+    const addAct=a=>{a.key=[a.officer,a.number,a.kind,a.date,a.to||''].join('|');
+      if(S.dirActs.some(x=>x.key===a.key))return;a.detected=now;S.dirActs.unshift(a);dirN++};
+    for(const o of newOff){
       try{
-        const ap=await api(`/officers/${o.id}/appointments?items_per_page=50`);const cur={};
-        for(const it of ap.items||[]){const n=it.appointed_to&&it.appointed_to.company_number;if(!n||n===COMPANY)continue;
-          cur[n]={name:it.appointed_to.company_name,status:it.appointed_to.company_status,appointed:it.appointed_on,resigned:it.resigned_on||undefined}}
-        const old=S.links[o.id]||{};
-        for(const[n,c]of Object.entries(cur)){
-          if(!old[n])push('warning',`${o.name}: new appointment at ${c.name} (${n})${c.resigned?'':''}`);
-          else{if(c.resigned&&!old[n].resigned)push('warning',`${o.name} resigned from ${c.name}`);
-            if(c.status!==old[n].status)push('warning',`${c.name} (${o.name}) status changed: ${old[n].status} → ${c.status}`)}}
+        const cur={};let start=0,total=Infinity;
+        while(start<total&&start<500){ // page through every appointment, not just the first 50
+          const ap=await api(`/officers/${o.id}/appointments?items_per_page=50&start_index=${start}`);
+          const items=ap.items||[];total=ap.total_results!=null?ap.total_results:items.length;
+          for(const it of items){const n=it.appointed_to&&it.appointed_to.company_number;if(!n||n===COMPANY)continue;
+            cur[n]={name:it.appointed_to.company_name,status:it.appointed_to.company_status,appointed:it.appointed_on,resigned:it.resigned_on||undefined}}
+          if(!items.length)break;start+=items.length;
+        }
+        const old=S.links[o.id];
+        if(!base&&old){ // no earlier snapshot for this person (first check, or newly appointed to Langdon): record silently
+          for(const[n,c]of Object.entries(cur)){const p=old[n],w={officer:o.id,who:o.name,number:n,company:c.name};
+            if(!p)addAct({...w,kind:c.resigned?'resigned':'appointed',date:c.resigned||c.appointed||today0});
+            else{if(c.resigned&&!p.resigned)addAct({...w,kind:'resigned',date:c.resigned});
+              if(c.status!==p.status)addAct({...w,kind:'status',date:today0,from:p.status,to:c.status})}}
+        }
         S.links[o.id]=cur;
       }catch(e){console.warn('appointments',o.id,e.message)}
     }
+    S.dirActs=S.dirActs.filter(a=>daysTo(actUntil(a))>=0);
+    if(dirN)push('warning',`${dirN} director change${dirN>1?'s':''} found at other companies (see Worth a look)`);
     // filings
     const live=(fil.items||[]).map(f=>{const dv=f.description_values||{},desc=cleanDesc(f);
       return{date:f.date,type:f.type,cat:mapCat(f.category,f.type),desc,att:/GAZ|DISS|SOAS|STRIKE/.test(f.type||'')||/replacement/i.test(desc),tid:f.transaction_id,

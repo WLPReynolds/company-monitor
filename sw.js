@@ -1,5 +1,5 @@
 // Network-first, cache as offline fallback (same approach as the finance tracker). Bump CACHE on each deploy.
-const CACHE = 'langdon-v2026-10-05.3';
+const CACHE = 'langdon-v2026-10-28.1';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
